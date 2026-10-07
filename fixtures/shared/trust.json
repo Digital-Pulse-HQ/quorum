@@ -1,0 +1,55 @@
+{
+  "schema": "quorum-trust/1",
+  "keys": [
+    {
+      "key_id": "producer-a-claude",
+      "principal": "example:producer-a@example.invalid",
+      "family": "claude",
+      "family_evidence": "declared",
+      "roles": [
+        "producer"
+      ],
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAslXLZF0GQ2Gb8NQQVgTSW+Yrpw9w/QgF0rlxHZ9VlOg=\n-----END PUBLIC KEY-----\n"
+    },
+    {
+      "key_id": "reviewer-b-codex",
+      "principal": "example:reviewer-b@example.invalid",
+      "family": "codex",
+      "family_evidence": "declared",
+      "roles": [
+        "reviewer"
+      ],
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAVXsgsDOb2m9JbDd7YmBaj4LKH4uuxUzxPQybWa8f25c=\n-----END PUBLIC KEY-----\n"
+    },
+    {
+      "key_id": "reviewer-c-claude",
+      "principal": "example:reviewer-c@example.invalid",
+      "family": "claude",
+      "family_evidence": "declared",
+      "roles": [
+        "reviewer"
+      ],
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEABk100eioAq5P8FguB1eASXkFtEHPr3SHll3jbj1ERx4=\n-----END PUBLIC KEY-----\n"
+    },
+    {
+      "key_id": "producer-e-observed",
+      "principal": "example:producer-e@example.invalid",
+      "family": "claude",
+      "family_evidence": "observed",
+      "roles": [
+        "producer"
+      ],
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEATVPibzlJ5aIOqRDQGW4lkXCLUtOtxt73sPeoMdqTMZI=\n-----END PUBLIC KEY-----\n"
+    },
+    {
+      "key_id": "reviewer-d-gemini",
+      "principal": "example:reviewer-d@example.invalid",
+      "family": "gemini",
+      "family_evidence": "observed",
+      "roles": [
+        "reviewer"
+      ],
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA5tuxTdY45LyRjhc0PDt+kCGHIBR7Jm0qBto/UNBLTtQ=\n-----END PUBLIC KEY-----\n"
+    }
+  ]
+}

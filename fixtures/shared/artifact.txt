@@ -1,0 +1,1 @@
+quorum fixture artifact: the reviewed bytes

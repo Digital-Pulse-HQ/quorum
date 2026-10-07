@@ -1,0 +1,48 @@
+{
+  "name": "@digital-pulse-hq/quorum",
+  "version": "0.1.0",
+  "description": "Quorum — an evidence protocol for multi-agent organisations. A portable, fail-closed verifier for signed cross-family review envelopes.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "bin": {
+    "quorum": "bin/quorum.mjs",
+    "quorum-required-check": "ci/required-check.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./schema/quorum-envelope-1.schema.json": "./schema/quorum-envelope-1.schema.json",
+    "./schema/quorum-manifest-1.schema.json": "./schema/quorum-manifest-1.schema.json",
+    "./schema/quorum-policy-1.schema.json": "./schema/quorum-policy-1.schema.json",
+    "./schema/quorum-trust-1.schema.json": "./schema/quorum-trust-1.schema.json"
+  },
+  "files": [
+    "bin",
+    "src",
+    "schema",
+    "ci",
+    "test",
+    "fixtures",
+    "tools",
+    "SPEC.md",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dependencies": {},
+  "devDependencies": {},
+  "scripts": {
+    "test": "node test/run.mjs",
+    "release:check": "node release-checks/run-release-checks.mjs",
+    "fixtures": "node tools/make-fixtures.mjs"
+  },
+  "keywords": [
+    "attestation",
+    "provenance",
+    "code-review",
+    "multi-agent",
+    "governance"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:quorum:schema:quorum-trust-1.schema.json",
+  "title": "quorum-trust/1",
+  "description": "The enrolled public keys a verifier will accept, and what each enrolment actually evidences. Enrolment is the only source of principal, family and role: nothing is read from the envelope's own claims.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "keys"],
+  "properties": {
+    "schema": { "const": "quorum-trust/1" },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key_id", "principal", "family", "family_evidence", "roles", "public_key_pem"],
+        "properties": {
+          "key_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$" },
+          "principal": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._:@()/+-]{2,127}$" },
+          "family": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+          "family_evidence": {
+            "type": "string",
+            "enum": ["declared", "observed"],
+            "description": "THE CEILING ON WHAT THIS KEY MAY CLAIM. An enrolment backed only by a yaml registry field is 'declared'; an envelope signed by that key may not assert 'observed'. This is what stops a self-declaration being re-labelled as an observation inside a signed payload."
+          },
+          "roles": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "enum": ["producer", "reviewer"] }
+          },
+          "public_key_pem": { "type": "string", "pattern": "^-----BEGIN PUBLIC KEY-----" }
+        }
+      }
+    }
+  }
+}

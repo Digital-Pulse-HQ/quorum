@@ -1,0 +1,37 @@
+{
+  "schema": "quorum/1",
+  "policy_version": "quorum-policy/1@2026-09-10+95ea43cdcf3a86a7fcae359adf886447",
+  "attempt_id": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+  "artifact": {
+    "kind": "git_commit",
+    "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+    "digest": "sha256:2141a1a59aa3d27d0ee1df3c1bc8f13c9f838b3f64738df0b2809223d2414f44"
+  },
+  "producer": {
+    "principal": "example:producer-a@example.invalid",
+    "family": "claude",
+    "family_trust": "declared",
+    "key_id": "producer-a-claude"
+  },
+  "reviewer": {
+    "principal": "example:reviewer-b@example.invalid",
+    "family": "codex",
+    "family_trust": "declared",
+    "key_id": "reviewer-b-codex"
+  },
+  "review": {
+    "verdict": "APPROVE",
+    "pr": 42,
+    "evidence_digest": "sha256:54ace6b65a47156a0631739bdd82ff24f10cccf85e2e5b72e2663860b900f0cb"
+  },
+  "signatures": {
+    "producer": {
+      "algorithm": "ed25519",
+      "value": "etRYVNyHzvt4R+OdvdUm0h9RBbN+Ul+vE8pMUyA8RKu3rcP683iJ0fdRCkulP5MYYtICu6R606BSNDoFFIQFCQ=="
+    },
+    "reviewer": {
+      "algorithm": "ed25519",
+      "value": "dwyB64cqGWaXSk5jtb5DjEuFeIKLo4JwtT42sDs6oDdj6ow+Nd0z76y0JfNqwnr1tckY8EzROZIYZO1oQJc8Cg=="
+    }
+  }
+}

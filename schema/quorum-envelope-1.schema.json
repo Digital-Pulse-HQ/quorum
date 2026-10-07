@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:quorum:schema:quorum-envelope-1.schema.json",
+  "title": "quorum/1 review envelope",
+  "description": "The canonical, doubly-signed record of one independent review of one artifact. The reviewer signature covers every field below except itself, including the producer signature, so reviewer identity, verdict and PR binding cannot be edited without invalidating the record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "policy_version",
+    "attempt_id",
+    "artifact",
+    "producer",
+    "reviewer",
+    "review",
+    "signatures"
+  ],
+  "properties": {
+    "schema": {
+      "const": "quorum/1"
+    },
+    "policy_version": {
+      "type": "string",
+      "description": "The exact policy this envelope was produced under, as <label>+<identity> where identity is a content digest of the policy document. A verifier refuses an envelope whose policy_version differs from the policy it was handed (Q05) AND refuses a policy document that does not hash to the identity it declares (Q20), so the string names ONE exact policy. Earlier, this field was an unbound label and two materially different policies could share it while this description already claimed otherwise.",
+      "pattern": "^[a-z][a-z0-9-]*/[0-9]+@[0-9]{4}-[0-9]{2}-[0-9]{2}\\+[0-9a-f]{32}$"
+    },
+    "attempt_id": {
+      "type": "string",
+      "description": "The producer attempt this review is bound to. Externally issued; never read from the reviewer.",
+      "pattern": "^attempt:[a-f0-9]{32}$"
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "commit",
+        "digest"
+      ],
+      "properties": {
+        "kind": {
+          "const": "git_commit"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "digest": {
+          "type": "string",
+          "description": "SHA-256 over the reviewed artifact bytes. Recomputed by the verifier when the artifact is supplied; this is the immutable binding an editable review comment cannot provide.",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal",
+        "family",
+        "family_trust",
+        "key_id"
+      ],
+      "properties": {
+        "principal": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._:@()/+-]{2,127}$"
+        },
+        "family": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,31}$"
+        },
+        "family_trust": {
+          "type": "string",
+          "description": "FIRST-CLASS VERSIONED TRUST LEVEL. 'declared' is a value asserted by the party it describes; 'observed' is emitted by something other than that party at the time of the act. A policy requiring 'observed' fails closed against 'declared'.",
+          "enum": [
+            "declared",
+            "observed"
+          ]
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        }
+      }
+    },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal",
+        "family",
+        "family_trust",
+        "key_id"
+      ],
+      "properties": {
+        "principal": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._:@()/+-]{2,127}$"
+        },
+        "family": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,31}$"
+        },
+        "family_trust": {
+          "type": "string",
+          "enum": [
+            "declared",
+            "observed"
+          ]
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "pr",
+        "evidence_digest"
+      ],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "description": "A verdict TOKEN. The schema constrains its shape only; whether a token is acceptable is a policy decision, so an unknown verdict is a policy refusal rather than a parse error.",
+          "pattern": "^[A-Z][A-Z _]{1,30}[A-Z]$"
+        },
+        "pr": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "The pull request this review is bound to, or null for a transport with no PR. A policy may require the binding. Bounded at Number.MAX_SAFE_INTEGER: above that, adjacent decimal integers collide on the same IEEE-754 double, so two different wire tokens would canonicalise and verify identically.",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "evidence_digest": {
+          "type": "string",
+          "description": "SHA-256 over the review evidence document. Deleting that document makes verification fail rather than pass quietly.",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "residue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "undecided",
+            "refuted",
+            "unsettled_by_execution",
+            "reviewer_limits"
+          ],
+          "description": "What the review LEFT BEHIND, not what it scored. Adopted 2026-09-28 from disensor. All four arrays are REQUIRED and may be empty \u2014 an empty array is the reviewer ASSERTING there was nothing, which is a different statement from omitting the field, and only the assertion is evidence. This block is what stops the envelope being a green badge.",
+          "properties": {
+            "undecided": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "description": "Findings raised and left undecided \u2014 neither confirmed nor withdrawn."
+            },
+            "refuted": {
+              "type": "array",
+              "description": "Findings the PRODUCER refuted, each with the evidence that refuted it. A refutation without evidence is an opinion and does not belong here.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "claim",
+                  "evidence"
+                ],
+                "properties": {
+                  "claim": {
+                    "type": "string",
+                    "pattern": "\\S"
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "pattern": "\\S"
+                  }
+                }
+              }
+            },
+            "unsettled_by_execution": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "description": "What execution could not settle \u2014 tests that could not run, environments unavailable, checks that did not report. This is where a billing-blocked CI belongs, not in silence."
+            },
+            "reviewer_limits": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "description": "The reviewer's own declared limits: what it did not look at, and why."
+            }
+          }
+        }
+      }
+    },
+    "signatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "producer",
+        "reviewer"
+      ],
+      "properties": {
+        "producer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "algorithm",
+            "value"
+          ],
+          "properties": {
+            "algorithm": {
+              "const": "ed25519"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9+/]{86}==$"
+            }
+          }
+        },
+        "reviewer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "algorithm",
+            "value"
+          ],
+          "properties": {
+            "algorithm": {
+              "const": "ed25519"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9+/]{86}==$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

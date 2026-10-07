@@ -1,0 +1,14 @@
+{
+  "schema": "quorum-policy/1",
+  "policy_version": "quorum-policy/1@2026-09-10+0a986e09c8d6e70bef8f795d68c967e9",
+  "accepted_verdicts": [
+    "APPROVE",
+    "CHANGES_REQUIRED",
+    "REJECT"
+  ],
+  "require_family_inequality": true,
+  "require_family_trust": "declared",
+  "require_pr_binding": false,
+  "require_evidence": true,
+  "require_residue_declaration": false
+}

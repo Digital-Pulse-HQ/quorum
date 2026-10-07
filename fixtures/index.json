@@ -1,0 +1,732 @@
+{
+  "schema": "quorum-fixtures/1",
+  "generated_by": "tools/make-fixtures.mjs",
+  "note": "Regenerate with `npm run fixtures`. Keys are derived from the committed phrases in the generator; no private key bytes are stored. Ed25519 is deterministic, so regeneration is byte-identical and test/fixtures.test.mjs fails on hand-edited fixtures.",
+  "expected": {
+    "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+    "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+    "pr": 42,
+    "artifact_digest": "sha256:79d7736b96fd5edca54a48d13351e944b4997691ec08ac4da30f05a3769a2f7d",
+    "evidence_digest": "sha256:54ace6b65a47156a0631739bdd82ff24f10cccf85e2e5b72e2663860b900f0cb",
+    "policy_version": "quorum-policy/1@2026-09-10+95ea43cdcf3a86a7fcae359adf886447"
+  },
+  "cases": [
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "valid-cross-family-approve",
+      "kind": "positive",
+      "description": "claude produced, codex reviewed, both signatures cover this artifact digest, APPROVE on pr 42.",
+      "expect": {
+        "ok": true
+      },
+      "envelope": "positive/valid-cross-family-approve.json"
+    },
+    {
+      "policy": "shared/policy-observed.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "observed-enrolment-under-observed-policy",
+      "kind": "positive",
+      "description": "The same shape at observed family evidence, against a policy that demands it. Paired with declared-under-observed-policy, which is the identical request at declared evidence and is refused.",
+      "expect": {
+        "ok": true
+      },
+      "envelope": "positive/observed-enrolment-under-observed-policy.json"
+    },
+    {
+      "policy": "shared/policy-no-pr.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": null,
+      "name": "no-pr-binding-under-permissive-policy",
+      "kind": "positive",
+      "description": "A review with no PR at all, under a policy that does not require the binding. The Markdown file protocol and a hand-reviewed patch have no PR number; the format must carry them without pretending one exists.",
+      "expect": {
+        "ok": true
+      },
+      "envelope": "positive/no-pr-binding-under-permissive-policy.json"
+    },
+    {
+      "policy": "shared/policy-residue.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "residue-declared",
+      "kind": "positive",
+      "description": "A policy requiring a residue declaration, with a fully populated one. This is the shape the format exists to carry: what the review could not settle, not what it scored.",
+      "expect": {
+        "ok": true
+      },
+      "envelope": "positive/residue-declared.json"
+    },
+    {
+      "policy": "shared/policy-residue.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "residue-declared-empty",
+      "kind": "positive",
+      "description": "The same policy with every residue array empty. An empty residue is the reviewer ASSERTING there was nothing undecided, nothing refuted, nothing execution could not settle and no limits worth declaring — a strong signed claim. It must pass, or a clean review becomes unrepresentable. THE POSITIVE CONTROL policy identity must preserve: residue may validly be empty, and this still passes under the real residue policy after the identity change.",
+      "expect": {
+        "ok": true
+      },
+      "envelope": "positive/residue-declared-empty.json"
+    },
+    {
+      "policy": "shared/policy-residue.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "residue-absent-under-requiring-policy",
+      "kind": "adversarial",
+      "description": "The same policy, and an envelope with no residue block at all. Absent is not empty: it records that the reviewer never addressed what it could not settle. Compare with residue-declared-empty, which differs only by carrying the empty residue and passes. Before policy identity this envelope was BYTE-IDENTICAL to positive/valid-cross-family-approve because both claimed the one shared policy_version; it now claims the residue policy's own version, so the file is what its name says it is.",
+      "expect": {
+        "ok": false,
+        "guard": "Q19_RESIDUE_DECLARATION"
+      },
+      "envelope": "adversarial/residue-absent-under-requiring-policy.json"
+    },
+    {
+      "policy": "shared/policy-identity-collision.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "policy-identity-collision",
+      "kind": "adversarial",
+      "description": "A policy document requiring a residue declaration, stamped with the NON-residue policy's version string. It is materially different from shared/policy-declared.json and claims the same policy_version, which is the collision policy identity exists to refuse. The envelope, trust store, artifact, evidence, attempt, commit and PR are the untouched positive control, so the refusal is attributable to the policy's identity and nothing else.",
+      "expect": {
+        "ok": false,
+        "guard": "Q20_POLICY_IDENTITY"
+      },
+      "envelope": "positive/valid-cross-family-approve.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "trailer-1-untrusted-reviewer-approve",
+      "kind": "adversarial",
+      "description": "Trailer table, row 1: verdict APPROVE, reviewer \"reviewer-b (codex)\", pr 42. The reviewer is untrusted free text signed by a key no trust store enrols. Under the producer-only verifier this returned PASS.",
+      "expect": {
+        "ok": false,
+        "guard": "Q11_REVIEWER_ENROLMENT"
+      },
+      "origin": "trailer table, row 1",
+      "envelope": "adversarial/trailer-1-untrusted-reviewer-approve.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "trailer-1-repaired-identity",
+      "kind": "positive",
+      "description": "Row 1 with its ONLY defect repaired: the same APPROVE on pr 42, from the enrolled codex reviewer. It passes, which is what makes the refusal above attributable to the untrusted principal and nothing else.",
+      "expect": {
+        "ok": true
+      },
+      "origin": "trailer table, row 1 (repaired control)",
+      "envelope": "positive/trailer-1-repaired-identity.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "trailer-2-self-approved-not-a-pr",
+      "kind": "adversarial",
+      "description": "Trailer table, row 2: verdict \"SELF APPROVED\", reviewer \"same-family producer\", pr \"not-a-pr\". The pr is a string, so the envelope is not a quorum/1 record at all.",
+      "expect": {
+        "ok": false,
+        "guard": "Q02_ENVELOPE_SCHEMA"
+      },
+      "origin": "trailer table, row 2",
+      "envelope": "adversarial/trailer-2-self-approved-not-a-pr.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "trailer-2-repaired-pr-and-identity",
+      "kind": "adversarial",
+      "description": "Row 2 with the pr made an integer and the reviewer made a genuinely enrolled claude-family principal. Now the verdict token is the defect: \"SELF APPROVED\" is not in the policy's accepted set.",
+      "expect": {
+        "ok": false,
+        "guard": "Q13_VERDICT"
+      },
+      "origin": "trailer table, row 2 (verdict isolated)",
+      "envelope": "adversarial/trailer-2-repaired-pr-and-identity.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "trailer-2-repaired-verdict",
+      "kind": "adversarial",
+      "description": "Row 2 with the verdict also repaired to APPROVE. Everything now verifies cryptographically and the review is still refused, because producer and reviewer are both claude. This is the \"same-family producer\" the row named.",
+      "expect": {
+        "ok": false,
+        "guard": "Q16_FAMILY_INEQUALITY"
+      },
+      "origin": "trailer table, row 2 (family inequality isolated)",
+      "envelope": "adversarial/trailer-2-repaired-verdict.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "trailer-3-changes-untrusted-999999",
+      "kind": "adversarial",
+      "description": "Trailer table, row 3: verdict CHANGES, reviewer \"untrusted-free-text\", pr 999999. Untrusted principal first.",
+      "expect": {
+        "ok": false,
+        "guard": "Q11_REVIEWER_ENROLMENT"
+      },
+      "origin": "trailer table, row 3",
+      "envelope": "adversarial/trailer-3-changes-untrusted-999999.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "trailer-3-repaired-identity",
+      "kind": "adversarial",
+      "description": "Row 3 from the enrolled codex reviewer. The verdict token \"CHANGES\" is still not the policy's \"CHANGES_REQUIRED\"; a near-miss token is refused rather than guessed at.",
+      "expect": {
+        "ok": false,
+        "guard": "Q13_VERDICT"
+      },
+      "origin": "trailer table, row 3 (verdict isolated)",
+      "envelope": "adversarial/trailer-3-repaired-identity.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "trailer-3-repaired-verdict",
+      "kind": "adversarial",
+      "description": "Row 3 with an accepted verdict token. pr 999999 is still not the commissioned pr 42, so the review is bound to a pull request nobody asked about.",
+      "expect": {
+        "ok": false,
+        "guard": "Q17_PR_BINDING"
+      },
+      "origin": "trailer table, row 3 (pr binding isolated)",
+      "envelope": "adversarial/trailer-3-repaired-verdict.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "mutated-verdict",
+      "kind": "adversarial",
+      "description": "CHANGES_REQUIRED rewritten to APPROVE in a signed envelope. Under the producer-only verifier this was invisible; the countersignature covers the verdict.",
+      "expect": {
+        "ok": false,
+        "guard": "Q12_REVIEWER_SIGNATURE"
+      },
+      "envelope": "adversarial/mutated-verdict.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 999,
+      "name": "mutated-pr",
+      "kind": "adversarial",
+      "description": "The pr number edited after signing.",
+      "expect": {
+        "ok": false,
+        "guard": "Q12_REVIEWER_SIGNATURE"
+      },
+      "envelope": "adversarial/mutated-pr.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 9007199254740991,
+      "name": "pr-at-max-safe-integer-boundary",
+      "kind": "positive",
+      "description": "review.pr at exactly Number.MAX_SAFE_INTEGER (2^53 - 1) — the last integer with a unique decimal-to-double mapping. The boundary value itself must still verify.",
+      "expect": {
+        "ok": true
+      },
+      "envelope": "positive/pr-at-max-safe-integer-boundary.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 9007199254740992,
+      "name": "unsafe-integer-pr-legacy-signed",
+      "kind": "adversarial",
+      "description": "review.pr = 9007199254740992 (2^53), countersigned by the PRE-fix canonical form, which refused non-integers only. Genuinely valid under the old verifier. The current code refuses it at Q02_ENVELOPE_SCHEMA, before any signature is examined, because review.pr is now bounded at Number.MAX_SAFE_INTEGER.",
+      "expect": {
+        "ok": false,
+        "guard": "Q02_ENVELOPE_SCHEMA"
+      },
+      "origin": "unsafe-integer wire ambiguity (corrected reproduction)",
+      "envelope": "adversarial/unsafe-integer-pr-legacy-signed.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 9007199254740992,
+      "name": "unsafe-integer-pr-adjacent-rewrite",
+      "kind": "adversarial",
+      "description": "The byte-for-byte same envelope as unsafe-integer-pr-legacy-signed with its one pr token rewritten from 9007199254740992 to 9007199254740993 and NOTHING resigned — the second valid wire representation of a single signature. It differs on disk, is identical after JSON.parse, and verified under the old code exactly as the original did. Refused now by the same Q02_ENVELOPE_SCHEMA maximum.",
+      "expect": {
+        "ok": false,
+        "guard": "Q02_ENVELOPE_SCHEMA"
+      },
+      "origin": "unsafe-integer wire ambiguity (corrected reproduction)",
+      "envelope": "adversarial/unsafe-integer-pr-adjacent-rewrite.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "mutated-reviewer-principal",
+      "kind": "adversarial",
+      "description": "The reviewer principal swapped for another enrolled principal while keeping the original key id.",
+      "expect": {
+        "ok": false,
+        "guard": "Q11_REVIEWER_ENROLMENT"
+      },
+      "envelope": "adversarial/mutated-reviewer-principal.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "mutated-artifact-digest",
+      "kind": "adversarial",
+      "description": "The artifact digest edited, so the envelope no longer describes the bytes the verifier recomputes.",
+      "expect": {
+        "ok": false,
+        "guard": "Q08_ARTIFACT_DIGEST"
+      },
+      "envelope": "adversarial/mutated-artifact-digest.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "mutated-commit",
+      "kind": "adversarial",
+      "description": "The reviewed commit edited to a different commit.",
+      "expect": {
+        "ok": false,
+        "guard": "Q07_ARTIFACT_BINDING"
+      },
+      "envelope": "adversarial/mutated-commit.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "mutated-attempt",
+      "kind": "adversarial",
+      "description": "The attempt id edited to the attempt the verifier commissioned, from an envelope signed for another.",
+      "expect": {
+        "ok": false,
+        "guard": "Q06_ATTEMPT_BINDING"
+      },
+      "envelope": "adversarial/mutated-attempt.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "mutated-policy-version",
+      "kind": "adversarial",
+      "description": "The policy version edited, so the envelope claims to have been produced under a policy the verifier was not handed. The forged value is SHAPE-VALID under policy identity — it carries a well-formed 128-bit identity suffix — so it reaches Q05 rather than being caught earlier by the envelope schema. No policy document in this tree has that identity, which is the point: the claim names a policy nobody can produce.",
+      "expect": {
+        "ok": false,
+        "guard": "Q05_POLICY_VERSION"
+      },
+      "envelope": "adversarial/mutated-policy-version.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "mutated-producer-signature",
+      "kind": "adversarial",
+      "description": "A byte flipped in the producer signature. The producer half is checked on its own before the countersignature, so the failure names the producer.",
+      "expect": {
+        "ok": false,
+        "guard": "Q10_PRODUCER_SIGNATURE"
+      },
+      "envelope": "adversarial/mutated-producer-signature.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "stale-attempt",
+      "kind": "adversarial",
+      "description": "A genuine, fully valid review — of the PREVIOUS attempt. Every signature verifies; the review is simply not of the work in front of the gate.",
+      "expect": {
+        "ok": false,
+        "guard": "Q06_ATTEMPT_BINDING"
+      },
+      "envelope": "adversarial/stale-attempt.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "signed-trust-overclaim",
+      "kind": "adversarial",
+      "description": "A properly signed envelope asserting `observed` family evidence on a key enrolled as `declared`. Every signature verifies. An envelope may not claim more trust than its enrolment carries.",
+      "expect": {
+        "ok": false,
+        "guard": "Q14_TRUST_ENROLMENT"
+      },
+      "envelope": "adversarial/signed-trust-overclaim.json"
+    },
+    {
+      "policy": "shared/policy-observed.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "declared-under-observed-policy",
+      "kind": "adversarial",
+      "description": "The valid declared envelope, produced under — and correctly claiming — the observed policy's own version, which requires observed family evidence. A family the principal declares about itself is not evidence the policy accepts, so the honest result is a refusal, not a re-transcription of a self-declaration as proof. It claims the observed policy's version because the two policies no longer share one, and an envelope claiming the declared version would be refused by Q05 before reaching this guard.",
+      "expect": {
+        "ok": false,
+        "guard": "Q15_TRUST_POLICY"
+      },
+      "envelope": "adversarial/declared-under-observed-policy.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "unenrolled-producer",
+      "kind": "adversarial",
+      "description": "The producer signs with a key no trust store enrols.",
+      "expect": {
+        "ok": false,
+        "guard": "Q09_PRODUCER_ENROLMENT"
+      },
+      "envelope": "adversarial/unenrolled-producer.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "producer-key-wrong-family",
+      "kind": "adversarial",
+      "description": "A validly enrolled producer key used to assert a different family. Family comes from the enrolment, never from the envelope.",
+      "expect": {
+        "ok": false,
+        "guard": "Q09_PRODUCER_ENROLMENT"
+      },
+      "envelope": "adversarial/producer-key-wrong-family.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "reviewer-key-wrong-role",
+      "kind": "adversarial",
+      "description": "The producer's own key used to sign the reviewer half. It is enrolled for `producer` only.",
+      "expect": {
+        "ok": false,
+        "guard": "Q11_REVIEWER_ENROLMENT"
+      },
+      "envelope": "adversarial/reviewer-key-wrong-role.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust-duplicate-key-material.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "duplicate-key-material-self-approval",
+      "kind": "adversarial",
+      "description": "ONE Ed25519 keypair enrolled twice in the same trust store — once as `dual-enrolled-producer-key`/claude/producer, again as `dual-enrolled-reviewer-key`/codex/reviewer, the second enrolment's PEM re-wrapped with CRLF line endings so a PEM-STRING comparison would miss the collision. The producer half and the reviewer half are both signed with that single private key. Without the key-material check, verifyEnvelope() returns ok:true, PASS, \"claude produced, codex reviewed\" — every artifact, evidence, attempt, commit, PR, policy and signature check genuinely passes while one controlling key has self-approved and the claimed family inequality remains literally true.",
+      "expect": {
+        "ok": false,
+        "guard": "Q04_TRUST_STORE"
+      },
+      "envelope": "adversarial/duplicate-key-material-self-approval.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "deleted-reviewer-signature",
+      "kind": "adversarial",
+      "description": "The reviewer signature removed. A record missing the countersignature is not a quorum/1 envelope.",
+      "expect": {
+        "ok": false,
+        "guard": "Q02_ENVELOPE_SCHEMA"
+      },
+      "envelope": "adversarial/deleted-reviewer-signature.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "deleted-envelope",
+      "kind": "adversarial",
+      "description": "DELETION CONTROL. The envelope file does not exist. Absence must be a refusal, never a skipped check that leaves the gate green.",
+      "expect": {
+        "ok": false,
+        "guard": "Q00_INPUT_PRESENT"
+      },
+      "envelope": "adversarial/does-not-exist.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/does-not-exist.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "deleted-trust-store",
+      "kind": "adversarial",
+      "description": "DELETION CONTROL. The trust store is absent, so nothing could be authenticated.",
+      "expect": {
+        "ok": false,
+        "guard": "Q00_INPUT_PRESENT"
+      },
+      "envelope": "positive/valid-cross-family-approve.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/does-not-exist.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "deleted-evidence",
+      "kind": "adversarial",
+      "description": "DELETION CONTROL. The policy requires the review evidence document and it has been deleted. Deleting the review evidence must make the check fail.",
+      "expect": {
+        "ok": false,
+        "guard": "Q18_EVIDENCE_BINDING"
+      },
+      "envelope": "positive/valid-cross-family-approve.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/other-evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "swapped-evidence",
+      "kind": "adversarial",
+      "description": "A different findings document presented for the same envelope.",
+      "expect": {
+        "ok": false,
+        "guard": "Q18_EVIDENCE_BINDING"
+      },
+      "envelope": "positive/valid-cross-family-approve.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": null,
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "no-artifact-recomputation",
+      "kind": "adversarial",
+      "description": "Neither the artifact bytes nor a caller-computed digest is supplied, so nothing was recomputed. The verifier refuses rather than accepting the envelope's own claim about the artifact.",
+      "expect": {
+        "ok": false,
+        "guard": "Q08_ARTIFACT_DIGEST"
+      },
+      "envelope": "positive/valid-cross-family-approve.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust-duplicate-key-id.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "malformed-trust-store",
+      "kind": "adversarial",
+      "description": "The trust store enrols the same key id twice, with different public keys. A store that cannot be read unambiguously is refused as a store.",
+      "expect": {
+        "ok": false,
+        "guard": "Q04_TRUST_STORE"
+      },
+      "envelope": "positive/valid-cross-family-approve.json"
+    },
+    {
+      "policy": "shared/policy-unknown-field.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "malformed-policy",
+      "kind": "adversarial",
+      "description": "A policy carrying an unknown field. An unrecognised governance switch is refused, not ignored.",
+      "expect": {
+        "ok": false,
+        "guard": "Q03_POLICY"
+      },
+      "envelope": "positive/valid-cross-family-approve.json"
+    },
+    {
+      "policy": "shared/policy-declared.json",
+      "trust": "shared/trust.json",
+      "artifact": "shared/artifact.txt",
+      "evidence": "shared/evidence.md",
+      "attempt": "attempt:1bbc23bb0b29f3de54389a9d6cd12dcc",
+      "commit": "fb2e409b3470be7b39cbebb3cc760f1c6089cb63",
+      "pr": 42,
+      "name": "malformed-envelope-json",
+      "kind": "adversarial",
+      "description": "The envelope bytes are not JSON.",
+      "expect": {
+        "ok": false,
+        "guard": "Q01_ENVELOPE_JSON"
+      },
+      "envelope": "adversarial/malformed-envelope.json"
+    }
+  ]
+}
