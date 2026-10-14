@@ -1,0 +1,109 @@
+# Publishes @digital-pulse-hq/quorum to npm, with provenance, when a `quorum-v<version>` tag is pushed.
+#
+# WHERE THIS RUNS. Not in the monorepo: quorum/ is published as the root of the PUBLIC repository
+# Digital-Pulse-HQ/quorum, and this file is copied there with it (scripts/quorum-public/snapshot.sh).
+# npm provenance needs a GitHub-hosted runner AND a public source repository that matches package.json
+# `repository`. The monorepo is private and runs on self-hosted runners, so it can do neither. Soren chose
+# this route on 2026-10-14.
+#
+# THE GATES, IN ORDER, ALL IN ONE JOB, so a failure before the publish step means nothing is published:
+#   1. the tag is `quorum-v<semver>`, it is the commit checked out, that commit is on `main`, and
+#      package.json declares exactly <semver>;
+#   2. the full suite on Node 24 and on the declared floor (Node 20.11.0), with no skips, plus conformance;
+#   3. only then `npm publish --provenance`.
+# It never runs for a pull request: `on:` is a tag push and nothing else.
+#
+# CREDENTIAL. npm trusted publishing (OIDC, `id-token: write`) needs no secret once this repository and
+# workflow are registered as a trusted publisher for the package on npmjs.com. Until then the NPM_TOKEN
+# repository secret is used. Neither is set up yet; that is Soren's step, not something this file can do.
+#
+# runtime/ci/quorum-release-workflow.test.mjs (monorepo) asserts these properties and executes gate 1.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'quorum-v*'
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ github.repository == 'Digital-Pulse-HQ/quorum' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: the tag is on main and matches package.json
+        run: |
+          tag=${GITHUB_REF_NAME}
+          case "$tag" in
+            quorum-v*) ;;
+            *) echo "::error::ref '${tag}' is not a quorum-v<version> tag"; exit 1 ;;
+          esac
+          want=${tag#quorum-v}
+          if ! printf '%s\n' "$want" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'${want}' is not a plain semver release"; exit 1
+          fi
+          have=$(node -p "require('./package.json').version")
+          if [ "$have" != "$want" ]; then
+            echo "::error::tag ${tag} but package.json declares ${have}"; exit 1
+          fi
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::checked out ${head}, but the tag points at ${GITHUB_SHA}"; exit 1
+          fi
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "::error::${GITHUB_SHA} is not on main; only a main commit is released"; exit 1
+          fi
+          echo "releasing ${want} from ${GITHUB_SHA}"
+
+      - name: npm test (Node 24) and conformance
+        run: |
+          if out=$(npm test 2>&1); then rc=0; else rc=$?; fi
+          printf '%s\n' "$out"
+          if [ "$rc" != "0" ]; then echo "::error::npm test failed (exit ${rc})"; exit 1; fi
+          skipped=$(printf '%s\n' "$out" | sed -nE 's/^(# |ℹ )skipped ([0-9]+)$/\2/p' | tail -1)
+          if [ "$skipped" != "0" ]; then echo "::error::skipped '${skipped}': a release is never cut over a skip or an unmeasured run"; exit 1; fi
+          node ci/required-check.mjs --manifest fixtures/index.json --mode conformance
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20.11.0'
+
+      - name: npm test (Node 20.11.0, the declared floor) and conformance
+        run: |
+          version=$(node --version)
+          if [ "$version" != "v20.11.0" ]; then echo "::error::floor node is ${version}, not v20.11.0"; exit 1; fi
+          if out=$(npm test 2>&1); then rc=0; else rc=$?; fi
+          printf '%s\n' "$out"
+          if [ "$rc" != "0" ]; then echo "::error::npm test failed on Node 20.11.0 (exit ${rc})"; exit 1; fi
+          skipped=$(printf '%s\n' "$out" | sed -nE 's/^(# |ℹ )skipped ([0-9]+)$/\2/p' | tail -1)
+          if [ "$skipped" != "0" ]; then echo "::error::skipped '${skipped}' on Node 20.11.0"; exit 1; fi
+          node ci/required-check.mjs --manifest fixtures/index.json --mode conformance
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: publish with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
