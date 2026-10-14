@@ -29,12 +29,15 @@
 // "restored" is the property that makes a self-mutating matrix safe to run at all.
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import {
+  constants, copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync,
+  symlinkSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   HARNESS_TESTS, MUTATIONS, ROUND_TAGS, assertUniqueIds, auditExitCode, classifyMutation,
   failingNames, loadFailures, runAudit, suiteRan,
@@ -44,6 +47,119 @@ import {
 // `test/**/*.test.mjs` glob (see test/run.mjs), so a glob here would capture "Could not find" instead
 // of the run under test.
 const testFilesIn = (root) => readdirSync(join(root, 'test')).filter((name) => name.endsWith('.test.mjs')).sort().map((name) => join('test', name));
+
+// PROVENANCE. The Node-floor review (F1): both TAP captures below spawn `process.execPath`, but nothing
+// asserted it — redirecting either one to a DIFFERENT fixed Node (24.19.0 under a 24.21.0 parent,
+// same TAP shape; or 24.19.0 under a 20.11.1 parent, different shape) left every test green. The
+// TAP shape cannot prove which binary emitted it, so the test-file children are made to SAY: this
+// preload runs in every test-file process the spawned runner starts (measured on 20.11.1 and
+// 24.21.0: NOT in the runner itself).
+//
+// Round 2 (R2-F1) showed the children's OWN identity proves nothing about the runner: a 24.19.0
+// runner that rewrote its `process.execPath` to the 24.21.0 parent's launched genuine 24.21.0
+// children, and every check passed. So each child now reports, from the OS rather than from any
+// property a process can rewrite, the executable of its PARENT — the runner — and its parent's PID;
+// the capture binds those to the PID it spawned, which is the process whose stdout is the TAP.
+// And (R2-F2) each record names its test file, so a missing or doubled child fails by file — a bare
+// count could not tell two records from one child from one record each from two children.
+const PROVENANCE_PRELOAD = 'provenance.mjs';
+const PROVENANCE_LOG = 'provenance.jsonl';
+
+// The executable the OS says `pid` is running — not `process.execPath`, `argv[0]` or `process.title`,
+// each of which the process can rewrite (R2-F1's runner rewrote `process.execPath`). Linux: the /proc
+// link. macOS: lsof's first `txt` mapping, which is the executable image (measured 2026-10-07: it
+// ignores `exec -a`, `process.title` and `process.execPath` alike). Also inlined into the preload.
+function exeOf(pid) {
+  if (process.platform === 'linux') return readlinkSync(`/proc/${pid}/exe`);
+  const out = execFileSync('lsof', ['-a', '-p', String(pid), '-d', 'txt', '-Fn'], { encoding: 'utf8' });
+  const line = out.split('\n').find((entry) => entry.startsWith('n'));
+  if (!line) throw new Error(`lsof named no executable for pid ${pid}:\n${out}`);
+  return line.slice(1);
+}
+
+const PROVENANCE_FILES = {
+  [PROVENANCE_PRELOAD]: [
+    "import { execFileSync } from 'node:child_process';",
+    "import { appendFileSync, readlinkSync } from 'node:fs';",
+    `const exeOf = ${exeOf};`,
+    `appendFileSync(new URL('./${PROVENANCE_LOG}', import.meta.url), JSON.stringify({`,
+    '  file: process.argv[1], ppid: process.ppid, runnerExe: exeOf(process.ppid),',
+    '  exe: exeOf(process.pid), version: process.version }) + "\\n");',
+    '',
+  ].join('\n'),
+};
+const provenanceArgs = (root) => ['--import', pathToFileURL(join(root, PROVENANCE_PRELOAD)).href];
+
+// R3-F1: a runner can buffer its genuine output, then `process.execve()` into a different binary that
+// relays those buffered bytes out through the SAME pid and the SAME already-open stdout fd (exec never
+// changes either). Every record above is written by a test-file CHILD, snapshotting its parent's
+// identity the moment IT started — true then, never re-checked against what the runner was running
+// when it actually emitted the TAP, so the relay satisfies every per-record check unmodified. By the
+// time `captureTap` returns, the runner has already exited, so the only place left to catch a mid-run
+// exec is while it is still alive. `captureTap` now spawns asynchronously and polls `exeOf(pid)` on an
+// interval for the runner's whole life; a genuine `node --test` run over real files takes well over
+// 50ms (measured 2026-10-07: ~100ms for two trivial files), so a 2ms poll samples it many times, while
+// the relay's own exec target is never scheduled for long enough to be truly unobservable in practice.
+const EXE_POLL_MS = 2;
+
+/** Runs `node --test` over `root`'s test files with `runner`, returning its TAP, the PID that emitted
+ * it, and `exeHistory`: the distinct executable images that PID was observed running while it was
+ * alive (deduplicated, in order). A poll that races the process's own exit is swallowed, not recorded
+ * — it proves nothing either way; only an OBSERVED identity counts. */
+function captureTap(root, { runner = process.execPath, env: extra = {} } = {}) {
+  const env = { ...process.env, ...extra };
+  delete env.NODE_TEST_CONTEXT;
+  const child = spawn(runner, [...provenanceArgs(root), '--test', '--test-reporter=tap', ...testFilesIn(root)],
+    { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const pid = child.pid;
+  const exeHistory = [];
+  const poll = setInterval(() => {
+    try {
+      const exe = exeOf(pid);
+      if (exeHistory[exeHistory.length - 1] !== exe) exeHistory.push(exe);
+    } catch { /* the process raced the poll and exited; not a finding either way */ }
+  }, EXE_POLL_MS);
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => { stdout += chunk; });
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  return new Promise((resolve, reject) => {
+    child.on('error', (error) => { clearInterval(poll); reject(error); });
+    // A failing run keeps its stderr, as the `execFileSync` catch this replaced did.
+    child.on('close', (status) => {
+      clearInterval(poll);
+      resolve({ tap: status === 0 ? stdout : stdout + stderr, pid, exeHistory });
+    });
+  });
+}
+
+/** Asserts the capture in `root` was EMITTED by process `runnerPid` running THIS process's Node binary,
+ * continuously — not merely at the moment its children happened to look. `exeHistory` comes from
+ * `captureTap`'s own live poll of `runnerPid`; see its comment for why a one-time, child-reported
+ * snapshot cannot prove this by itself. */
+function assertRanParentNode(root, label, runnerPid, exeHistory) {
+  const path = join(root, PROVENANCE_LOG);
+  assert.ok(existsSync(path), `${label}: the spawned runner recorded no provenance, so which Node ran it is unknown`);
+  const records = readFileSync(path, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.deepEqual(records.map((record) => record.file).sort(),
+    testFilesIn(root).map((file) => realpathSync(join(root, file))).sort(),
+    `${label}: exactly one record per test file, each naming its own file; got ${JSON.stringify(records)}`);
+  const self = exeOf(process.pid);
+  for (const record of records) {
+    assert.equal(record.ppid, runnerPid,
+      `${label}: ${record.file} was not started by the process whose output was captured`);
+    assert.equal(record.runnerExe, self, `${label}: the RUNNER that emitted the TAP was ${record.runnerExe}, not this Node`);
+    assert.deepEqual({ exe: record.exe, version: record.version }, { exe: self, version: process.version },
+      `${label}: ${record.file} ran under a different Node than the parent`);
+  }
+  // R3-F1's own check: every per-record assertion above can hold while the runner that emitted the
+  // TAP was, for some part of its life, a different executable than the one its children described.
+  assert.ok(exeHistory && exeHistory.length > 0,
+    `${label}: the runner's executable image was never sampled while it was alive, so nothing proves what was running when it emitted the TAP`);
+  assert.ok(exeHistory.every((exe) => exe === self),
+    `${label}: the runner's own executable image changed while it was alive (observed ${JSON.stringify(exeHistory)}), `
+    + 'so the TAP it emitted cannot be attributed to one continuously-verified process');
+}
 
 const AUDIT_CLI = fileURLToPath(new URL('../tools/r1-mutation-audit.mjs', import.meta.url));
 
@@ -353,7 +469,7 @@ test('R1 audit CLI: the real binary applies, restores, and exits 1 on a survivor
   let status = 0;
   let stdout = '';
   try {
-    stdout = execFileSync('node', [AUDIT_CLI, '--root', root, '--suite', 'pass.test.mjs',
+    stdout = execFileSync(process.execPath, [AUDIT_CLI, '--root', root, '--suite', 'pass.test.mjs',
       '--mutations', mutationsFile], { encoding: 'utf8' });
   } catch (err) {
     status = err.status;
@@ -374,6 +490,54 @@ test('R1 audit CLI: the real binary applies, restores, and exits 1 on a survivor
     assert.match(stdout, /1 mutations: 0 caught/, 'the summary must count what it measured');
     assert.equal(readFileSync(join(root, 'a.mjs'), 'utf8'), ORIGINAL,
       'the real CLI must restore its target, not only the injected-seam path');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("R1 audit CLI: the suite runs under the audit's own Node, not the first `node` on PATH", () => {
+  // The Node-floor review (F2): `runSuite` spawned `node` from PATH, so a Node 20.11 audit with Node 24
+  // first on PATH measured Node 24 and printed a green baseline as if Node 20 had run it. A decoy
+  // `node` now heads PATH: it records that it was called and fails, so reverting to PATH lookup
+  // turns the baseline red AND leaves the decoy's mark — while the suite's own record must name
+  // this process's executable and version.
+  const root = tempTree({
+    'a.mjs': 'export const x = 1;\n',
+    'provenance.test.mjs': [
+      "import test from 'node:test';",
+      "import { writeFileSync } from 'node:fs';",
+      "test('records the Node runSuite selected', () => writeFileSync('child.json',",
+      '  JSON.stringify({ execPath: process.execPath, version: process.version })));',
+      '',
+    ].join('\n'),
+  });
+  const decoyDir = join(root, 'decoy-bin');
+  mkdirSync(decoyDir);
+  writeFileSync(join(decoyDir, 'node'), `#!/bin/sh\necho called > ${JSON.stringify(join(root, 'decoy.called'))}\nexit 1\n`,
+    { mode: 0o755 });
+  const mutationsFile = join(root, 'rows.json');
+  writeFileSync(mutationsFile, '[]');
+
+  const env = { ...process.env, PATH: `${decoyDir}:${process.env.PATH ?? ''}` };
+  delete env.NODE_TEST_CONTEXT;
+  let status = 0;
+  let stdout = '';
+  try {
+    stdout = execFileSync(process.execPath, [AUDIT_CLI, '--root', root, '--suite', 'provenance.test.mjs',
+      '--mutations', mutationsFile], { encoding: 'utf8', env });
+  } catch (err) {
+    status = err.status;
+    stdout = String(err.stdout ?? '') + String(err.stderr ?? '');
+  }
+
+  try {
+    assert.equal(existsSync(join(root, 'decoy.called')), false, 'the audit ran the suite with the `node` PATH resolves');
+    assert.ok(existsSync(join(root, 'child.json')), `the suite never ran, so which Node runSuite chose is unknown; got:\n${stdout}`);
+    assert.deepEqual(JSON.parse(readFileSync(join(root, 'child.json'), 'utf8')),
+      { execPath: process.execPath, version: process.version },
+      "the suite ran under a different Node than the audit's own");
+    assert.match(stdout, /baseline: green \(1 passing\)/, 'the baseline must be the provenance test, parsed from real TAP');
+    assert.equal(status, 0, 'an empty matrix over a green baseline exits 0');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -535,7 +699,7 @@ test('R1 audit/K16: EVERY row runs — a later survivor is reported, through the
   let status = 0;
   let stdout = '';
   try {
-    stdout = execFileSync('node', [AUDIT_CLI, '--root', root, '--suite', 'pass.test.mjs',
+    stdout = execFileSync(process.execPath, [AUDIT_CLI, '--root', root, '--suite', 'pass.test.mjs',
       '--mutations', mutationsFile], { encoding: 'utf8' });
   } catch (err) {
     status = err.status;
@@ -637,8 +801,14 @@ test('R1 audit/L01 positive control: a suite that DID run still classifies norma
 // construction, and the path shape is whatever the real runner actually emits, on whatever Node
 // this is running under. The capture asserts its own preconditions, so it can never silently stop
 // reproducing a load failure.
-function captureLoadFailureTap({ withPassingFile }) {
+//
+// "Whatever Node this is running under" was false until the floor run caught it: the capture spawned
+// `node` from PATH, so `$(mise where node@20.11.1)/bin/node test/run.mjs` captured Node 24's TAP
+// while asserting Node 20's shape, and failed 304/305. It now spawns `process.execPath`, and
+// `assertRanParentNode` proves the runner that emitted the TAP really was that binary.
+async function captureLoadFailureTap({ withPassingFile }) {
   const root = tempTree({
+    ...PROVENANCE_FILES,
     'test/broken.mjs': 'export const value = (\n',
     'test/target.test.mjs': [
       "import test from 'node:test';",
@@ -652,15 +822,8 @@ function captureLoadFailureTap({ withPassingFile }) {
   });
 
   try {
-    const env = { ...process.env };
-    delete env.NODE_TEST_CONTEXT;
-    let tap = '';
-    try {
-      tap = execFileSync('node', ['--test', '--test-reporter=tap', ...testFilesIn(root)],
-        { cwd: root, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (err) {
-      tap = String(err.stdout ?? '') + String(err.stderr ?? '');
-    }
+    const { tap, pid, exeHistory } = await captureTap(root);
+    assertRanParentNode(root, `D12 capture (${withPassingFile ? 'partial' : 'zero'})`, pid, exeHistory);
 
     // Preconditions: this must really be a load failure, and it must really carry a pass marker —
     // the two facts the finding turns on. If the runner ever stops doing either, this fails loudly
@@ -682,22 +845,240 @@ function captureLoadFailureTap({ withPassingFile }) {
   }
 }
 
-test('R1 audit/D12: a real test-file LOAD FAILURE is UNMEASURED even with a pass marker', () => {
+// The provenance check itself, against the substitutions it exists to reject. Each case asserts the
+// child records are what round 2's check accepted — genuine children of THIS Node — so a rejection
+// here is the runner-identity check firing, not some other mismatch.
+const PASSING_FILES = {
+  ...PROVENANCE_FILES,
+  'test/a.test.mjs': "import test from 'node:test';\ntest('P/a', () => {});\n",
+  'test/b.test.mjs': "import test from 'node:test';\ntest('P/b', () => {});\n",
+};
+
+function assertChildrenAreThisNode(root, label) {
+  const records = readFileSync(join(root, PROVENANCE_LOG), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(records.length, testFilesIn(root).length, `${label}: every test file must have run`);
+  for (const record of records) {
+    assert.deepEqual({ exe: record.exe, version: record.version }, { exe: exeOf(process.pid), version: process.version },
+      `${label}: the children must be genuinely this Node, or this is not the round-2 counterexample`);
+  }
+  return records;
+}
+
+test('R1 audit/provenance: a DIFFERENT runner that launches this Node as its test children is rejected', async () => {
+  // Round 2 (R2-F1), in the same-TAP-shape form: a byte-copy of THIS Node at another path — same
+  // version, so the same TAP — whose runner (only) is told its `process.execPath` is this Node's, so
+  // it launches genuine children of this Node. Round 2's check accepted exactly this.
+  const root = tempTree(PASSING_FILES);
+  try {
+    // The control: the real runner over the same tree passes, so a rejection below is the swap.
+    const control = await captureTap(root);
+    assertRanParentNode(root, 'control', control.pid, control.exeHistory);
+    rmSync(join(root, PROVENANCE_LOG));
+
+    const self = exeOf(process.pid);
+    const runner = join(root, 'alt', 'bin', 'node');
+    mkdirSync(dirname(runner), { recursive: true });
+    copyFileSync(self, runner, constants.COPYFILE_FICLONE);
+    // A Node linked against a shared libnode (Homebrew) looks for it in ../lib beside its executable.
+    if (existsSync(join(dirname(dirname(self)), 'lib'))) symlinkSync(join(dirname(dirname(self)), 'lib'), join(root, 'alt', 'lib'));
+    assert.equal(execFileSync(runner, ['--version'], { encoding: 'utf8' }).trim(), process.version,
+      'the substitute runner must be this very Node version, or this is not the same-TAP-shape case');
+    writeFileSync(join(root, 'swap.cjs'), 'if (!process.env.NODE_TEST_CONTEXT) process.execPath = process.env.SWAP_TO;\n');
+
+    const swapped = await captureTap(root, { runner, env: {
+      SWAP_TO: process.execPath,
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(join(root, 'swap.cjs'))}`,
+    } });
+    assert.match(swapped.tap, /^# pass 2$/m, `the substitute runner must have run both files; got:\n${swapped.tap}`);
+    const records = assertChildrenAreThisNode(root, 'swapped runner');
+    assert.ok(records.every((record) => record.ppid === swapped.pid), 'the children must be the captured process\'s own');
+    assert.throws(() => assertRanParentNode(root, 'swapped runner', swapped.pid, swapped.exeHistory),
+      /the RUNNER that emitted the TAP was \S*alt\/bin\/node, not this Node/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('R1 audit/provenance: a wrapper that runs this Node as a CHILD, so did not emit the TAP itself, is rejected', async () => {
+  // The other half of binding to the emitting process: a wrapper that does not `exec` is the process
+  // whose stdout was captured, while a genuine runner of this Node runs beneath it — every runner
+  // and child identity is right, and only the PID shows the TAP passed through something else.
+  const root = tempTree(PASSING_FILES);
+  try {
+    const wrapper = join(root, 'wrap.sh');
+    writeFileSync(wrapper, `#!/bin/sh\n${JSON.stringify(process.execPath)} "$@"\nexit $?\n`, { mode: 0o755 });
+    const wrapped = await captureTap(root, { runner: wrapper });
+    assert.match(wrapped.tap, /^# pass 2$/m, `the wrapped runner must have run both files; got:\n${wrapped.tap}`);
+    const records = assertChildrenAreThisNode(root, 'wrapped runner');
+    assert.ok(records.every((record) => record.runnerExe === exeOf(process.pid)), 'the inner runner must be this Node');
+    assert.throws(() => assertRanParentNode(root, 'wrapped runner', wrapped.pid, wrapped.exeHistory),
+      /was not started by the process whose output was captured/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('R1 audit/provenance: one record per test FILE — a doubled record does not stand in for a missing one', async () => {
+  // Round 2 (R2-F2): two records from one child and none from another made the right COUNT. The
+  // records here are genuine except for which file wrote them, so only the per-file check can fire.
+  const root = tempTree(PASSING_FILES);
+  try {
+    const { pid, exeHistory } = await captureTap(root);
+    assertRanParentNode(root, 'genuine', pid, exeHistory);
+    const [first] = readFileSync(join(root, PROVENANCE_LOG), 'utf8').trim().split('\n');
+    writeFileSync(join(root, PROVENANCE_LOG), `${first}\n${first}\n`);
+    assert.throws(() => assertRanParentNode(root, 'doubled', pid, exeHistory), /exactly one record per test file/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('R1 audit/provenance: a runner that exec-replaces itself after recording, relaying its own buffered TAP through the same pid, is rejected', async (t) => {
+  // Round 3 (R3-F1), the independent review of the round-2 fix: every per-record check above is
+  // written by a test-file CHILD describing its PARENT — true the moment that child asked, which is
+  // early, while the runner is still genuinely this Node. Nothing re-asks after that. A genuine runner
+  // can buffer its own real stdout, then `process.execve()` into a different binary once its children
+  // are done; `execve` keeps the pid AND the already-open stdout fd, so the relay's bytes arrive from
+  // exactly the pid `captureTap` is watching, and every existing record still reads as genuine — the
+  // runner really was this Node when its children asked, it just was not this Node for the rest of its
+  // life. `exeHistory` is the only thing here that is sampled from the runner itself, after launch,
+  // rather than reported by a cooperating child, which is why it is the thing that catches this.
+  if (typeof process.execve !== 'function') {
+    // NOT A SKIP. CI's Node 20.11.0 floor step fails on any skipped test (a floor-only skip is a silent
+    // hole), and a skip here would also leave the guard below unexercised on every Node < 24. A Node
+    // runner cannot exec-replace itself on this binary, so the end-to-end relay cannot be built — but
+    // the guard that catches it is plain code and must still refuse, here, on a genuine capture whose
+    // live history is then shown a second image, and on one whose history was never sampled.
+    t.diagnostic(`process.execve is not available on ${process.version}: the end-to-end exec-replace relay `
+      + 'cannot be built on this binary, so this asserts the exeHistory guard on a genuine capture instead');
+    const root = tempTree(PASSING_FILES);
+    try {
+      const genuine = await captureTap(root);
+      assertRanParentNode(root, 'genuine', genuine.pid, genuine.exeHistory);
+      const foreign = join(root, 'relay', 'bin', 'node');
+      assert.throws(() => assertRanParentNode(root, 'exec-replaced runner', genuine.pid, [...genuine.exeHistory, foreign]),
+        /the runner's own executable image changed while it was alive/);
+      assert.throws(() => assertRanParentNode(root, 'never-sampled runner', genuine.pid, []),
+        /the runner's executable image was never sampled while it was alive/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+    return;
+  }
+  const root = tempTree(PASSING_FILES);
+  try {
+    const self = exeOf(process.pid);
+    // A byte-copy of this Node at a different path, exactly as the round-2 regression above builds —
+    // a DIFFERENT image, with no second Node install required to run this file anywhere.
+    const relay = join(root, 'relay', 'bin', 'node');
+    mkdirSync(dirname(relay), { recursive: true });
+    copyFileSync(self, relay, constants.COPYFILE_FICLONE);
+    if (existsSync(join(dirname(dirname(self)), 'lib'))) symlinkSync(join(dirname(dirname(self)), 'lib'), join(root, 'relay', 'lib'));
+
+    const buffer = join(root, 'buffered.tap');
+    const hook = join(root, 'exec-chain-hook.cjs');
+    writeFileSync(hook, [
+      "if (!process.env.NODE_TEST_CONTEXT) {",
+      "  const fs = require('node:fs');",
+      `  const bufferPath = ${JSON.stringify(buffer)};`,
+      `  const relay = ${JSON.stringify(relay)};`,
+      "  fs.writeFileSync(bufferPath, '');",
+      "  process.stdout.write = (chunk, enc, cb) => {",
+      "    fs.appendFileSync(bufferPath, chunk);",
+      "    const done = typeof enc === 'function' ? enc : cb;",
+      "    if (done) done();",
+      "    return true;",
+      "  };",
+      "  process.once('beforeExit', () => {",
+      "    const relayCode = \"const fs=require('node:fs');process.stdout.write(fs.readFileSync(process.argv[1]));\";",
+      "    const env = { ...process.env };",
+      "    delete env.NODE_OPTIONS;",
+      "    process.execve(relay, [relay, '-e', relayCode, bufferPath], env);",
+      "  });",
+      "}",
+      '',
+    ].join('\n'));
+
+    const captured = await captureTap(root, { env: {
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(hook)}`,
+    } });
+
+    // Preconditions: the relay really ran, carried the genuine suite's own TAP through, and every
+    // per-record check this process already made — ppid and the children's own identity — still
+    // reads as genuine, exactly as R3-F1 reported. If any of this is false, the case below is not the
+    // temporal gap and a throw would not mean what this test claims it means.
+    assert.match(captured.tap, /^# pass 2$/m, `the relayed TAP must carry the genuine suite's own summary; got:\n${captured.tap}`);
+    const records = assertChildrenAreThisNode(root, 'exec-replaced runner');
+    assert.ok(records.every((record) => record.ppid === captured.pid), 'the children must be the captured process\'s own');
+    assert.ok(records.every((record) => record.runnerExe === self), 'the children\'s own snapshot of their parent must still read as genuine');
+
+    assert.ok(captured.exeHistory.some((exe) => exe !== self),
+      `the live poll must have observed the relay image, or this did not exercise the exec-replace at all; observed ${JSON.stringify(captured.exeHistory)}`);
+    assert.throws(() => assertRanParentNode(root, 'exec-replaced runner', captured.pid, captured.exeHistory),
+      /the runner's own executable image changed while it was alive/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The name `node --test` gives a test file that failed to load, when that file is passed RELATIVE.
+// Measured 2026-10-07 by running each binary directly: 20.11.1 resolves it to an ABSOLUTE realpath
+// (`/private/var/.../test/target.test.mjs`); 24.19.0 and 24.21.0 keep it relative. The comment this
+// replaced said "later Nodes" emit the relative one — nothing between 20.11.1 and 24.19.0 was run.
+const MEASURED_LOAD_FAILURE_SHAPE = {
+  '20.11.1': 'absolute',
+  '24.19.0': 'relative',
+  '24.21.0': 'relative',
+};
+
+test('R1 audit/D12 shapes: a load failure is recovered whether the runner names it ABSOLUTE or RELATIVE', () => {
+  // HAND-BUILT, and labelled as such: the capture above can only ever show the shape of the Node it
+  // runs on, so without this a run on 24 never exercises the absolute shape and a run on 20 never
+  // exercises the relative one. These lines are the measured shapes, not invented ones.
+  const tapFor = (name) => `TAP version 13\nnot ok 1 - ${name}\n  ---\n  failureType: 'testCodeFailure'\n  ...\n`
+    + "# Subtest: R1/an unrelated passing test\nok 2 - R1/an unrelated passing test\n1..2\n# tests 2\n# pass 1\n# fail 1\n";
+  for (const [shape, name] of [
+    ['absolute', '/private/var/folders/x/T/tmp.abc/test/target.test.mjs'],
+    ['relative', 'test/target.test.mjs'],
+  ]) {
+    const tap = tapFor(name);
+    assert.deepEqual(loadFailures(tap), [name], `${shape}: the failing FILE must be recovered verbatim`);
+    assert.equal(suiteRan(tap), false, `${shape}: a load failure with a positive pass count still did not run`);
+
+    const log = recorder();
+    const code = runAudit({
+      mutations: [{ id: `D12S-${shape}`, file: 'a.mjs', find: 'a', replace: 'b', what: 'unparseable import',
+        redundantWith: 'a redundancy that must NOT excuse a suite that never ran' }],
+      suite: (() => { let n = 0; return () => (n++ === 0 ? suiteStub(true)() : { passed: false, out: tap }); })(),
+      read: () => 'a', write: () => {}, log: log.write, error: () => {}, root: '/nonexistent',
+    });
+    assert.equal(code, 1, `${shape}: a row whose suite never ran must not exit 0`);
+    assert.match(log.text(), new RegExp(`D12S-${shape} UNMEASURED`), `${shape}: must be UNMEASURED`);
+  }
+});
+
+test('R1 audit/D12: a real test-file LOAD FAILURE is UNMEASURED even with a pass marker', async () => {
   for (const withPassingFile of [false, true]) {
     const label = withPassingFile ? 'partial' : 'zero';
-    const tap = captureLoadFailureTap({ withPassingFile });
+    const tap = await captureLoadFailureTap({ withPassingFile });
     assert.ok(/^# pass \d+/m.test(tap), `${label}: the stimulus must carry a pass marker, or it does not reproduce the defect`);
-    // Whatever shape the real runner emits — round 9 showed it is RELATIVE, not the absolute path
-    // the hand-built fixture assumed. Asserted, not presumed.
+    // Whatever shape the real runner emits — round 9 showed it is RELATIVE on Node 24, not the
+    // absolute path the hand-built fixture assumed. Asserted, not presumed.
     assert.equal(loadFailures(tap).length, 1, `${label}: exactly one file-level failure must be recoverable`);
     assert.match(loadFailures(tap)[0], /target\.test\.mjs$/, `${label}: the recovered name must be the failing FILE`);
-    // Node 20 names a file passed to it explicitly by its ABSOLUTE path; later Nodes by the relative
-    // one. Each is pinned on its own version, so the detector is shown to recover both shapes.
-    if (Number(process.versions.node.split('.')[0]) > 20) {
-      assert.doesNotMatch(loadFailures(tap)[0], /^\//,
-        `${label}: the real runner emits a RELATIVE name here; a detector keyed on absolute paths would miss it`);
+    // The file is passed RELATIVE (`testFilesIn`) on every version; which shape comes back depends on
+    // the Node. Pinned only where MEASURED — no claim is made about a version nobody ran. Any other
+    // version must still produce one of the two known shapes, so a third one fails here by name.
+    // Both shapes are covered on every version by `D12 shapes` below, from hand-built lines.
+    const name = loadFailures(tap)[0];
+    const shape = name === 'test/target.test.mjs' ? 'relative'
+      : /^\/.+\/test\/target\.test\.mjs$/.test(name) ? 'absolute' : `unknown (${name})`;
+    const measured = MEASURED_LOAD_FAILURE_SHAPE[process.versions.node];
+    if (measured) {
+      assert.equal(shape, measured, `${label}: Node ${process.versions.node} was measured emitting the ${measured} name`);
     } else {
-      assert.match(loadFailures(tap)[0], /^\//, `${label}: Node 20 emits an ABSOLUTE name here; a detector keyed on relative paths would miss it`);
+      assert.ok(shape === 'relative' || shape === 'absolute',
+        `${label}: Node ${process.versions.node} emitted an unmeasured shape; measure it and add it to the table`);
     }
     assert.equal(suiteRan(tap), false, `${label}: a suite whose test FILE failed to load did not run`);
 
@@ -755,7 +1136,7 @@ test('R1 audit/D13: an UNMEASURED suite is refused even when a behavioural name 
   assert.doesNotMatch(log.text(), /D13 CAUGHT/, 'a truncated run was credited as detection');
 });
 
-test('R1 audit/D14: the summary names each row by its OWN verdict, never as SURVIVOR', () => {
+test('R1 audit/D14: the summary names each row by its OWN verdict, never as SURVIVOR', async () => {
   // Round 8 (F3): the round-7 label correction had no test, so it could regress silently.
   // INVALID and UNMEASURED both exit 1 — correctly, neither measured anything — but printing them
   // as SURVIVOR tells the reader a mutation got through a real measurement, which is a different
@@ -775,10 +1156,10 @@ test('R1 audit/D14: the summary names each row by its OWN verdict, never as SURV
   }
 
   const log = recorder();
+  const d14bTap = await captureLoadFailureTap({ withPassingFile: false });
   runAudit({
     mutations: [{ id: 'D14b', file: 'a.mjs', find: 'a', replace: 'b', what: 'suite never ran' }],
-    suite: (() => { const tap = captureLoadFailureTap({ withPassingFile: false }); let n = 0;
-      return () => (n++ === 0 ? suiteStub(true)() : { passed: false, out: tap }); })(),
+    suite: (() => { let n = 0; return () => (n++ === 0 ? suiteStub(true)() : { passed: false, out: d14bTap }); })(),
     read: () => 'a', write: () => {}, log: log.write, error: () => {}, root: '/nonexistent',
   });
   assert.match(log.text(), /^ {2}UNMEASURED D14b:/m, 'an UNMEASURED row must be summarised as UNMEASURED');
@@ -794,7 +1175,7 @@ test('R1 audit/D14: the summary names each row by its OWN verdict, never as SURV
     'a row that really was measured and really survived must still be called a SURVIVOR');
 });
 
-test('R1 audit/R10-C: a named behavioural failure does NOT excuse a simultaneous load failure', () => {
+test('R1 audit/R10-C: a named behavioural failure does NOT excuse a simultaneous load failure', async () => {
   // Round 10 (F1). D12 generates a load failure alone (or beside a PASSING file); D13
   // generates a named failure with no summary and no load failure. Neither produces the COMBINATION
   // — a completed run carrying both — so the load-failure refusal could be bypassed specifically
@@ -803,6 +1184,7 @@ test('R1 audit/R10-C: a named behavioural failure does NOT excuse a simultaneous
   // Generated rather than written, for the reason round 9 established: a stimulus this case turns
   // on must come from the runner, or it only reproduces what I assumed the runner does.
   const root = tempTree({
+    ...PROVENANCE_FILES,
     'test/broken.mjs': 'export const value = (\n',
     'test/a-load.test.mjs': [
       "import test from 'node:test';",
@@ -821,15 +1203,8 @@ test('R1 audit/R10-C: a named behavioural failure does NOT excuse a simultaneous
   });
 
   try {
-    const env = { ...process.env };
-    delete env.NODE_TEST_CONTEXT;
-    let tap = '';
-    try {
-      tap = execFileSync('node', ['--test', '--test-reporter=tap', ...testFilesIn(root)],
-        { cwd: root, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (err) {
-      tap = String(err.stdout ?? '') + String(err.stderr ?? '');
-    }
+    const { tap, pid, exeHistory } = await captureTap(root);
+    assertRanParentNode(root, 'R10-C capture', pid, exeHistory);
 
     // The three facts that make this the combination case, asserted so it cannot decay into one of
     // the cases already covered.

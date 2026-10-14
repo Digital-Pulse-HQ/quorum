@@ -395,9 +395,12 @@ function suiteEnv() {
   return env;
 }
 
+// The suite runs under THIS process's Node, never whatever `node` PATH resolves first. A Node 20.11
+// audit with Node 24 earlier on PATH otherwise measured Node 24 and reported it as a green Node 20
+// baseline (Node-floor review, F2). Pinned by `R1 audit CLI: the suite runs under the audit's own Node`.
 function runSuite() {
   try {
-    const out = execFileSync('node', ['--test', '--test-reporter=tap', SUITE],
+    const out = execFileSync(process.execPath, ['--test', '--test-reporter=tap', SUITE],
       { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: suiteEnv() });
     return { passed: true, out };
   } catch (err) {

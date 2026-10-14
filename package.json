@@ -1,8 +1,12 @@
 {
   "name": "@digital-pulse-hq/quorum",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Quorum — an evidence protocol for multi-agent organisations. A portable, fail-closed verifier for signed cross-family review envelopes.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Digital-Pulse-HQ/quorum.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=20.11.0"
